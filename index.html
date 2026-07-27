@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Денди онлайн</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsnes/1.2.0/jsnes.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            padding: 20px;
+        }
+        
+        .container {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+            max-width: 1200px;
+            width: 100%;
+        }
+        
+        .game-area {
+            background: #16213e;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        #nes-container {
+            width: 100%;
+            max-width: 512px;
+            height: auto;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 0 auto 15px;
+        }
+        
+        #nes-container canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            display: block;
+        }
+        
+        .game-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .game-controls button {
+            padding: 10px 20px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .game-controls button:hover {
+            transform: scale(1.05);
+            background: #c73a54;
+        }
+        
+        .game-controls button:active {
+            transform: scale(0.95);
+        }
+        
+        .sidebar {
+            background: #16213e;
+            border-radius: 15px;
+            padding: 25px;
+            min-width: 250px;
+            max-width: 350px;
+            flex: 0 0 auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            text-align: center;
+        }
+        
+        .sidebar h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #e94560;
+        }
+        
+        #qrcode {
+            display: inline-block;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        #qrcode img {
+            display: block;
+        }
+        
+        .url-text {
+            font-size: 12px;
+            color: #888;
+            word-break: break-all;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .players-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .players-info span {
+            color: #4ade80;
+            font-weight: bold;
+        }
+        
+        .status {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+        }
+        
+        .status .connected {
+            color: #4ade80;
+        }
+        
+        .status .disconnected {
+            color: #ef4444;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .sidebar {
+                max-width: 100%;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="game-area">
+            <div id="nes-container"></div>
+            <div class="game-controls">
+                <button id="loadGame">🎮 Загрузить игру</button>
+                <button id="resetGame">🔄 Сброс</button>
+                <button id="pauseGame">⏸️ Пауза</button>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <h2>📱 Управление с телефона</h2>
+            <p style="font-size: 13px; color: #888; margin-bottom: 15px;">
+                Отсканируйте QR-код телефоном
+            </p>
+            
+            <div id="qrcode"></div>
+            
+            <div class="url-text" id="urlDisplay">Загрузка...</div>
+            
+            <div class="players-info">
+                👥 Игроков: <span id="playerCount">0</span>
+            </div>
+            
+            <div class="status" id="statusDisplay">
+                🔌 Статус: <span class="disconnected">Отключено</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================
+        // 1. ЭМУЛЯТОР
+        // ====================
+        const container = document.getElementById('nes-container');
+        
+        // Создаем canvas
+        const nesCanvas = document.createElement('canvas');
+        nesCanvas.width = 256;
+        nesCanvas.height = 240;
+        nesCanvas.style.width = '100%';
+        nesCanvas.style.height = '100%';
+        container.appendChild(nesCanvas);
+        
+        // Создаем эмулятор
+        const nes = new jsnes.NES({
+            onFrame: function(buffer) {
+                const ctx = nesCanvas.getContext('2d');
+                const imageData = ctx.createImageData(256, 240);
+                
+                for (let i = 0; i < buffer.length; i++) {
+                    const pixel = buffer[i];
+                    const idx = i * 4;
+                    imageData.data[idx] = (pixel >> 16) & 0xFF;
+                    imageData.data[idx + 1] = (pixel >> 8) & 0xFF;
+                    imageData.data[idx + 2] = pixel & 0xFF;
+                    imageData.data[idx + 3] = 0xFF;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+            },
+            onAudioSample: function(left, right) {
+                // Можно добавить аудио
+            }
+        });
+
+        let isRunning = false;
+        let frameInterval = null;
+        let romData = null;
+
+        // Загрузка игры
+        document.getElementById('loadGame').addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.nes';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const data = new Uint8Array(e.target.result);
+                    romData = data;
+                    nes.loadRom(data);
+                    
+                    if (!isRunning) {
+                        isRunning = true;
+                        runFrame();
+                    }
+                    
+                    alert('✅ Игра загружена!');
+                };
+                
+                reader.readAsArrayBuffer(file);
+            };
+            
+            input.click();
+        });
+
+        function runFrame() {
+            if (!isRunning) return;
+            
+            nes.frame();
+            
+            if (frameInterval === null) {
+                frameInterval = setInterval(() => {
+                    if (isRunning) {
+                        nes.frame();
+                    }
+                }, 1000 / 60);
+            }
+        }
+
+        document.getElementById('resetGame').addEventListener('click', () => {
+            if (romData) {
+                nes.loadRom(romData);
+            }
+        });
+
+        document.getElementById('pauseGame').addEventListener('click', () => {
+            isRunning = !isRunning;
+            if (!isRunning) {
+                clearInterval(frameInterval);
+                frameInterval = null;
+            } else {
+                runFrame();
+            }
+            document.getElementById('pauseGame').textContent = isRunning ? '⏸️ Пауза' : '▶️ Играть';
+        });
+
+        // ====================
+        // 2. УПРАВЛЕНИЕ С ТЕЛЕФОНА
+        // ====================
+        function pressButton(button, pressed) {
+            if (!nes) return;
+            
+            const buttonMap = {
+                'a': jsnes.Controller.BUTTON_A,
+                'b': jsnes.Controller.BUTTON_B,
+                'select': jsnes.Controller.BUTTON_SELECT,
+                'start': jsnes.Controller.BUTTON_START,
+                'up': jsnes.Controller.BUTTON_UP,
+                'down': jsnes.Controller.BUTTON_DOWN,
+                'left': jsnes.Controller.BUTTON_LEFT,
+                'right': jsnes.Controller.BUTTON_RIGHT
+            };
+            
+            for (let i = 0; i < 2; i++) {
+                if (pressed) {
+                    nes.buttonDown(i, buttonMap[button]);
+                } else {
+                    nes.buttonUp(i, buttonMap[button]);
+                }
+            }
+        }
+
+        // ====================
+        // 3. QR-КОД
+        // ====================
+        function generateQR() {
+            const baseUrl = window.location.origin;
+            const controllerUrl = baseUrl + '/controller.html';
+            
+            document.getElementById('urlDisplay').textContent = '📱 ' + controllerUrl;
+            
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            
+            try {
+                new QRCode(qrContainer, {
+                    text: controllerUrl,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#333333',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            } catch (error) {
+                qrContainer.innerHTML = '<p style="color: red;">Ошибка генерации QR</p>';
+            }
+        }
+
+        // ====================
+        // 4. WEBSOCKET
+        // ====================
+        let ws = null;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}?role=screen`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                document.querySelector('#statusDisplay .connected').textContent = 'Подключено';
+                document.querySelector('#statusDisplay .connected').className = 'connected';
+                console.log('WebSocket подключен');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    
+                    switch(message.type) {
+                        case 'connected':
+                            console.log('Экран подключен');
+                            break;
+                            
+                        case 'player_joined':
+                            document.getElementById('playerCount').textContent = message.count;
+                            break;
+                            
+                        case 'player_left':
+                            document.getElementById('playerCount').textContent = message.count;
+                            break;
+                            
+                        case 'controller_input':
+                            const data = message.data;
+                            if (data.button && data.pressed !== undefined) {
+                                pressButton(data.button, data.pressed);
+                            }
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Ошибка парсинга сообщения:', e);
+                }
+            };
+            
+            ws.onclose = () => {
+                document.querySelector('#statusDisplay .connected').textContent = 'Отключено';
+                document.querySelector('#statusDisplay .connected').className = 'disconnected';
+                console.log('WebSocket отключен');
+                
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket ошибка:', error);
+            };
+        }
+
+        // ====================
+        // 5. ЗАПУСК
+        // ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            generateQR();
+            connectWebSocket();
+        });
+
+        window.addEventListener('hashchange', generateQR);
+    </script>
+</body>
+</html>
