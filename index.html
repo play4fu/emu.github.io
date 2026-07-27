@@ -52,6 +52,7 @@
             border-radius: 5px;
             overflow: hidden;
             margin: 0 auto 15px;
+            position: relative;
         }
         
         #nes-container canvas {
@@ -59,6 +60,26 @@
             height: 100%;
             image-rendering: pixelated;
             display: block;
+        }
+
+        #nes-container .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #666;
+            font-size: 16px;
+            text-align: center;
+        }
+        
+        #nes-container .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4ade80;
+            font-size: 14px;
+            text-align: center;
         }
         
         .game-controls {
@@ -86,6 +107,11 @@
         
         .game-controls button:active {
             transform: scale(0.95);
+        }
+        
+        .game-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         .sidebar {
@@ -153,6 +179,22 @@
         .status .disconnected {
             color: #ef4444;
         }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
         
         @media (max-width: 768px) {
             .container {
@@ -170,11 +212,16 @@
 <body>
     <div class="container">
         <div class="game-area">
-            <div id="nes-container"></div>
+            <div id="nes-container">
+                <div class="placeholder">🎮 Загрузка игры...</div>
+            </div>
             <div class="game-controls">
-                <button id="loadGame">🎮 Загрузить игру</button>
-                <button id="resetGame">🔄 Сброс</button>
-                <button id="pauseGame">⏸️ Пауза</button>
+                <div class="file-input-wrapper">
+                    <button id="loadGameBtn">🎮 Загрузить другую игру</button>
+                    <input type="file" id="romFileInput" accept=".nes">
+                </div>
+                <button id="resetGame" disabled>🔄 Сброс</button>
+                <button id="pauseGame" disabled>⏸️ Пауза</button>
             </div>
         </div>
         
@@ -203,6 +250,7 @@
         // 1. ЭМУЛЯТОР
         // ====================
         const container = document.getElementById('nes-container');
+        const placeholder = container.querySelector('.placeholder');
         
         // Создаем canvas
         const nesCanvas = document.createElement('canvas');
@@ -212,90 +260,234 @@
         nesCanvas.style.height = '100%';
         container.appendChild(nesCanvas);
         
+        // Убираем плейсхолдер, показываем загрузку
+        if (placeholder) {
+            placeholder.textContent = '⏳ Загрузка игры...';
+        }
+        
         // Создаем эмулятор
-        const nes = new jsnes.NES({
-            onFrame: function(buffer) {
-                const ctx = nesCanvas.getContext('2d');
-                const imageData = ctx.createImageData(256, 240);
-                
-                for (let i = 0; i < buffer.length; i++) {
-                    const pixel = buffer[i];
-                    const idx = i * 4;
-                    imageData.data[idx] = (pixel >> 16) & 0xFF;
-                    imageData.data[idx + 1] = (pixel >> 8) & 0xFF;
-                    imageData.data[idx + 2] = pixel & 0xFF;
-                    imageData.data[idx + 3] = 0xFF;
-                }
-                
-                ctx.putImageData(imageData, 0, 0);
-            },
-            onAudioSample: function(left, right) {
-                // Можно добавить аудио
-            }
-        });
-
+        let nes = null;
         let isRunning = false;
         let frameInterval = null;
         let romData = null;
 
-        // Загрузка игры
-        document.getElementById('loadGame').addEventListener('click', () => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.nes';
+        // Инициализация эмулятора
+        function initNES() {
+            try {
+                nes = new jsnes.NES({
+                    onFrame: function(buffer) {
+                        if (!nesCanvas) return;
+                        const ctx = nesCanvas.getContext('2d');
+                        const imageData = ctx.createImageData(256, 240);
+                        
+                        for (let i = 0; i < buffer.length; i++) {
+                            const pixel = buffer[i];
+                            const idx = i * 4;
+                            imageData.data[idx] = (pixel >> 16) & 0xFF;
+                            imageData.data[idx + 1] = (pixel >> 8) & 0xFF;
+                            imageData.data[idx + 2] = pixel & 0xFF;
+                            imageData.data[idx + 3] = 0xFF;
+                        }
+                        
+                        ctx.putImageData(imageData, 0, 0);
+                    },
+                    onAudioSample: function(left, right) {
+                        // Аудио опционально
+                    }
+                });
+                return true;
+            } catch (e) {
+                console.error('Ошибка инициализации эмулятора:', e);
+                return false;
+            }
+        }
+
+        // Загрузка ROM из URL
+        function loadROMFromURL(url) {
+            if (placeholder) {
+                placeholder.textContent = '⏳ Загрузка игры...';
+                placeholder.style.display = 'block';
+            }
             
-            input.onchange = function(e) {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                
-                reader.onload = function(e) {
-                    const data = new Uint8Array(e.target.result);
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP ошибка: ${response.status}`);
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(arrayBuffer => {
+                    const data = new Uint8Array(arrayBuffer);
+                    if (data.length === 0) {
+                        throw new Error('Файл пустой');
+                    }
+                    
+                    if (!nes) {
+                        if (!initNES()) {
+                            throw new Error('Ошибка инициализации эмулятора');
+                        }
+                    }
+                    
                     romData = data;
                     nes.loadRom(data);
                     
+                    // Активируем кнопки
+                    document.getElementById('resetGame').disabled = false;
+                    document.getElementById('pauseGame').disabled = false;
+                    
+                    // Запускаем эмуляцию
                     if (!isRunning) {
                         isRunning = true;
                         runFrame();
                     }
                     
-                    alert('✅ Игра загружена!');
-                };
+                    if (placeholder) {
+                        placeholder.style.display = 'none';
+                    }
+                    
+                    console.log('✅ Игра загружена:', url);
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки игры:', error);
+                    if (placeholder) {
+                        placeholder.textContent = '❌ Ошибка загрузки игры';
+                        placeholder.style.display = 'block';
+                    }
+                    alert('❌ Не удалось загрузить игру: ' + error.message);
+                });
+        }
+
+        // Загрузка ROM из файла (пользовательский выбор)
+        function loadROM(data) {
+            try {
+                if (!nes) {
+                    if (!initNES()) {
+                        alert('❌ Ошибка инициализации эмулятора');
+                        return false;
+                    }
+                }
+
+                romData = data;
+                nes.loadRom(data);
                 
-                reader.readAsArrayBuffer(file);
-            };
-            
-            input.click();
-        });
+                document.getElementById('resetGame').disabled = false;
+                document.getElementById('pauseGame').disabled = false;
+                
+                if (!isRunning) {
+                    isRunning = true;
+                    runFrame();
+                }
+                
+                if (placeholder) {
+                    placeholder.style.display = 'none';
+                }
+                
+                return true;
+            } catch (e) {
+                console.error('Ошибка загрузки ROM:', e);
+                alert('❌ Ошибка загрузки игры: ' + e.message);
+                return false;
+            }
+        }
 
         function runFrame() {
-            if (!isRunning) return;
+            if (!isRunning || !nes) return;
             
-            nes.frame();
+            try {
+                nes.frame();
+            } catch (e) {
+                console.error('Ошибка в кадре:', e);
+                isRunning = false;
+                clearInterval(frameInterval);
+                frameInterval = null;
+                return;
+            }
             
             if (frameInterval === null) {
                 frameInterval = setInterval(() => {
-                    if (isRunning) {
-                        nes.frame();
+                    if (isRunning && nes) {
+                        try {
+                            nes.frame();
+                        } catch (e) {
+                            console.error('Ошибка в кадре (интервал):', e);
+                            isRunning = false;
+                            clearInterval(frameInterval);
+                            frameInterval = null;
+                        }
                     }
                 }, 1000 / 60);
             }
         }
 
-        document.getElementById('resetGame').addEventListener('click', () => {
-            if (romData) {
-                nes.loadRom(romData);
+        // Обработка загрузки файла
+        document.getElementById('romFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!file.name.toLowerCase().endsWith('.nes')) {
+                alert('❌ Пожалуйста, выберите файл с расширением .nes');
+                this.value = '';
+                return;
+            }
+            
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    if (data.length === 0) {
+                        alert('❌ Файл пустой');
+                        return;
+                    }
+                    
+                    if (loadROM(data)) {
+                        alert('✅ Игра загружена!');
+                        document.getElementById('loadGameBtn').textContent = '🎮 Загрузить другую игру';
+                    }
+                } catch (error) {
+                    console.error('Ошибка чтения файла:', error);
+                    alert('❌ Ошибка чтения файла: ' + error.message);
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('❌ Ошибка чтения файла');
+            };
+            
+            reader.readAsArrayBuffer(file);
+            this.value = '';
+        });
+
+        // Кнопка загрузки
+        document.getElementById('loadGameBtn').addEventListener('click', function() {
+            document.getElementById('romFileInput').click();
+        });
+
+        // Сброс игры
+        document.getElementById('resetGame').addEventListener('click', function() {
+            if (romData && nes) {
+                try {
+                    nes.loadRom(romData);
+                } catch (e) {
+                    console.error('Ошибка сброса:', e);
+                    alert('❌ Ошибка сброса игры');
+                }
             }
         });
 
-        document.getElementById('pauseGame').addEventListener('click', () => {
+        // Пауза
+        document.getElementById('pauseGame').addEventListener('click', function() {
+            if (!nes) return;
+            
             isRunning = !isRunning;
             if (!isRunning) {
                 clearInterval(frameInterval);
                 frameInterval = null;
+                this.textContent = '▶️ Играть';
             } else {
                 runFrame();
+                this.textContent = '⏸️ Пауза';
             }
-            document.getElementById('pauseGame').textContent = isRunning ? '⏸️ Пауза' : '▶️ Играть';
         });
 
         // ====================
@@ -304,23 +496,27 @@
         function pressButton(button, pressed) {
             if (!nes) return;
             
-            const buttonMap = {
-                'a': jsnes.Controller.BUTTON_A,
-                'b': jsnes.Controller.BUTTON_B,
-                'select': jsnes.Controller.BUTTON_SELECT,
-                'start': jsnes.Controller.BUTTON_START,
-                'up': jsnes.Controller.BUTTON_UP,
-                'down': jsnes.Controller.BUTTON_DOWN,
-                'left': jsnes.Controller.BUTTON_LEFT,
-                'right': jsnes.Controller.BUTTON_RIGHT
-            };
-            
-            for (let i = 0; i < 2; i++) {
-                if (pressed) {
-                    nes.buttonDown(i, buttonMap[button]);
-                } else {
-                    nes.buttonUp(i, buttonMap[button]);
+            try {
+                const buttonMap = {
+                    'a': jsnes.Controller.BUTTON_A,
+                    'b': jsnes.Controller.BUTTON_B,
+                    'select': jsnes.Controller.BUTTON_SELECT,
+                    'start': jsnes.Controller.BUTTON_START,
+                    'up': jsnes.Controller.BUTTON_UP,
+                    'down': jsnes.Controller.BUTTON_DOWN,
+                    'left': jsnes.Controller.BUTTON_LEFT,
+                    'right': jsnes.Controller.BUTTON_RIGHT
+                };
+                
+                for (let i = 0; i < 2; i++) {
+                    if (pressed) {
+                        nes.buttonDown(i, buttonMap[button]);
+                    } else {
+                        nes.buttonUp(i, buttonMap[button]);
+                    }
                 }
+            } catch (e) {
+                console.error('Ошибка нажатия кнопки:', e);
             }
         }
 
@@ -347,6 +543,7 @@
                 });
             } catch (error) {
                 qrContainer.innerHTML = '<p style="color: red;">Ошибка генерации QR</p>';
+                console.error('QR Error:', error);
             }
         }
 
@@ -359,62 +556,78 @@
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}?role=screen`;
             
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                document.querySelector('#statusDisplay .connected').textContent = 'Подключено';
-                document.querySelector('#statusDisplay .connected').className = 'connected';
-                console.log('WebSocket подключен');
-            };
-            
-            ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    
-                    switch(message.type) {
-                        case 'connected':
-                            console.log('Экран подключен');
-                            break;
-                            
-                        case 'player_joined':
-                            document.getElementById('playerCount').textContent = message.count;
-                            break;
-                            
-                        case 'player_left':
-                            document.getElementById('playerCount').textContent = message.count;
-                            break;
-                            
-                        case 'controller_input':
-                            const data = message.data;
-                            if (data.button && data.pressed !== undefined) {
-                                pressButton(data.button, data.pressed);
-                            }
-                            break;
-                    }
-                } catch (e) {
-                    console.error('Ошибка парсинга сообщения:', e);
-                }
-            };
-            
-            ws.onclose = () => {
-                document.querySelector('#statusDisplay .connected').textContent = 'Отключено';
-                document.querySelector('#statusDisplay .connected').className = 'disconnected';
-                console.log('WebSocket отключен');
+            try {
+                ws = new WebSocket(wsUrl);
                 
+                ws.onopen = () => {
+                    document.querySelector('#statusDisplay .connected').textContent = 'Подключено';
+                    document.querySelector('#statusDisplay .connected').className = 'connected';
+                    console.log('WebSocket подключен');
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        
+                        switch(message.type) {
+                            case 'connected':
+                                console.log('Экран подключен');
+                                break;
+                                
+                            case 'player_joined':
+                                document.getElementById('playerCount').textContent = message.count;
+                                break;
+                                
+                            case 'player_left':
+                                document.getElementById('playerCount').textContent = message.count;
+                                break;
+                                
+                            case 'controller_input':
+                                const data = message.data;
+                                if (data.button && data.pressed !== undefined) {
+                                    pressButton(data.button, data.pressed);
+                                }
+                                break;
+                        }
+                    } catch (e) {
+                        console.error('Ошибка парсинга сообщения:', e);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    document.querySelector('#statusDisplay .connected').textContent = 'Отключено';
+                    document.querySelector('#statusDisplay .connected').className = 'disconnected';
+                    console.log('WebSocket отключен');
+                    
+                    setTimeout(connectWebSocket, 5000);
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket ошибка:', error);
+                };
+            } catch (e) {
+                console.error('Ошибка подключения WebSocket:', e);
                 setTimeout(connectWebSocket, 5000);
-            };
-            
-            ws.onerror = (error) => {
-                console.error('WebSocket ошибка:', error);
-            };
+            }
         }
 
         // ====================
         // 5. ЗАПУСК
         // ====================
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', function() {
+            // Инициализируем эмулятор
+            initNES();
+            
             generateQR();
             connectWebSocket();
+            
+            // АВТОМАТИЧЕСКАЯ ЗАГРУЗКА ИГРЫ
+            // Пробуем загрузить DD.nes из корня
+            const gameUrl = '/DD.nes';
+            console.log('🔍 Пытаемся загрузить игру:', gameUrl);
+            loadROMFromURL(gameUrl);
+            
+            console.log('Денди эмулятор загружен');
         });
 
         window.addEventListener('hashchange', generateQR);
