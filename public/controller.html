@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Денди Контроллер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+        }
+        
+        body {
+            background: #0a0a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            overflow: hidden;
+        }
+        
+        .controller {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            touch-action: none;
+        }
+        
+        .status-bar {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 20px;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        
+        .status-bar .connected {
+            color: #4ade80;
+        }
+        
+        .status-bar .disconnected {
+            color: #ef4444;
+        }
+        
+        .dpad-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            touch-action: none;
+        }
+        
+        .dpad {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            touch-action: none;
+        }
+        
+        .dpad-btn {
+            position: absolute;
+            background: #2a2a4a;
+            border: 2px solid #4a4a6a;
+            border-radius: 8px;
+            cursor: pointer;
+            touch-action: none;
+            transition: all 0.1s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #888;
+        }
+        
+        .dpad-btn:active, .dpad-btn.active {
+            background: #4a4a8a;
+            border-color: #6a6aaa;
+            transform: scale(0.95);
+        }
+        
+        .dpad-up {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+        }
+        
+        .dpad-up:active, .dpad-up.active {
+            transform: translateX(-50%) scale(0.95);
+        }
+        
+        .dpad-down {
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+        }
+        
+        .dpad-down:active, .dpad-down.active {
+            transform: translateX(-50%) scale(0.95);
+        }
+        
+        .dpad-left {
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 60px;
+            height: 60px;
+        }
+        
+        .dpad-left:active, .dpad-left.active {
+            transform: translateY(-50%) scale(0.95);
+        }
+        
+        .dpad-right {
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 60px;
+            height: 60px;
+        }
+        
+        .dpad-right:active, .dpad-right.active {
+            transform: translateY(-50%) scale(0.95);
+        }
+        
+        .buttons-row {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+        
+        .action-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 3px solid #4a4a6a;
+            background: #2a2a4a;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            transition: all 0.1s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .action-btn:active, .action-btn.active {
+            transform: scale(0.9);
+        }
+        
+        .btn-a {
+            border-color: #e94560;
+            background: #3a1a2a;
+        }
+        
+        .btn-a:active, .btn-a.active {
+            background: #e94560;
+            border-color: #ff6a8a;
+        }
+        
+        .btn-b {
+            border-color: #4a8ae9;
+            background: #1a2a4a;
+        }
+        
+        .btn-b:active, .btn-b.active {
+            background: #4a8ae9;
+            border-color: #6aaaff;
+        }
+        
+        .bottom-row {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+        }
+        
+        .small-btn {
+            padding: 10px 25px;
+            border-radius: 20px;
+            border: 2px solid #4a4a6a;
+            background: #2a2a4a;
+            color: #888;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            transition: all 0.1s;
+            text-transform: uppercase;
+        }
+        
+        .small-btn:active, .small-btn.active {
+            background: #4a4a6a;
+            transform: scale(0.95);
+        }
+        
+        @media (max-width: 400px) {
+            .dpad {
+                width: 170px;
+                height: 170px;
+            }
+            
+            .dpad-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 18px;
+            }
+            
+            .action-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="controller" id="controller">
+        <div class="status-bar" id="statusBar">
+            🔌 Статус: <span class="disconnected" id="statusText">Отключено</span>
+        </div>
+        
+        <!-- D-Pad -->
+        <div class="dpad-container">
+            <div class="dpad" id="dpad">
+                <div class="dpad-btn dpad-up" data-btn="up">▲</div>
+                <div class="dpad-btn dpad-down" data-btn="down">▼</div>
+                <div class="dpad-btn dpad-left" data-btn="left">◀</div>
+                <div class="dpad-btn dpad-right" data-btn="right">▶</div>
+            </div>
+        </div>
+        
+        <!-- Кнопки A/B -->
+        <div class="buttons-row">
+            <div class="action-btn btn-b" id="btnB">B</div>
+            <div class="action-btn btn-a" id="btnA">A</div>
+        </div>
+        
+        <!-- Кнопки Start/Select -->
+        <div class="bottom-row">
+            <div class="small-btn" id="btnSelect">Select</div>
+            <div class="small-btn" id="btnStart">Start</div>
+        </div>
+    </div>
+
+    <script>
+        // ====================
+        // 1. WEBSOCKET
+        // ====================
+        let ws = null;
+        let connected = false;
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}?role=controller`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                connected = true;
+                document.getElementById('statusText').textContent = 'Подключено';
+                document.getElementById('statusText').className = 'connected';
+                console.log('Контроллер подключен');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('Получено:', message);
+                } catch (e) {
+                    console.error('Ошибка парсинга:', e);
+                }
+            };
+            
+            ws.onclose = () => {
+                connected = false;
+                document.getElementById('statusText').textContent = 'Отключено';
+                document.getElementById('statusText').className = 'disconnected';
+                console.log('Контроллер отключен');
+                
+                // Переподключение через 3 секунды
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket ошибка:', error);
+            };
+        }
+
+        // ====================
+        // 2. ОТПРАВКА КОМАНД
+        // ====================
+        function sendCommand(button, pressed) {
+            if (!connected || !ws || ws.readyState !== WebSocket.OPEN) {
+                console.warn('Нет соединения с сервером');
+                return;
+            }
+            
+            ws.send(JSON.stringify({
+                button: button,
+                pressed: pressed
+            }));
+        }
+
+        // ====================
+        // 3. ОБРАБОТКА КАСАНИЙ
+        // ====================
+        // Функция для обработки кнопок (touch и mouse)
+        function setupButton(element, buttonName) {
+            // Touch события
+            element.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                element.classList.add('active');
+                sendCommand(buttonName, true);
+            }, { passive: false });
+            
+            element.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                element.classList.remove('active');
+                sendCommand(buttonName, false);
+            }, { passive: false });
+            
+            element.addEventListener('touchcancel', (e) => {
+                element.classList.remove('active');
+                sendCommand(buttonName, false);
+            }, { passive: false });
+            
+            // Mouse события (для тестирования на ПК)
+            element.addEventListener('mousedown', (e) => {
+                element.classList.add('active');
+                sendCommand(buttonName, true);
+            });
+            
+            element.addEventListener('mouseup', (e) => {
+                element.classList.remove('active');
+                sendCommand(buttonName, false);
+            });
+            
+            element.addEventListener('mouseleave', (e) => {
+                element.classList.remove('active');
+                sendCommand(buttonName, false);
+            });
+        }
+
+        // ====================
+        // 4. НАСТРОЙКА ВСЕХ КНОПОК
+        // ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            
+            // D-Pad
+            document.querySelectorAll('.dpad-btn').forEach(el => {
+                const btn = el.dataset.btn;
+                setupButton(el, btn);
+            });
+            
+            // Кнопки A/B
+            setupButton(document.getElementById('btnA'), 'a');
+            setupButton(document.getElementById('btnB'), 'b');
+            
+            // Start/Select
+            setupButton(document.getElementById('btnStart'), 'start');
+            setupButton(document.getElementById('btnSelect'), 'select');
+        });
+
+        // Предотвращаем скролл при касании
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
